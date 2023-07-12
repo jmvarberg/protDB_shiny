@@ -1,5 +1,4 @@
 library(shiny)
-library(gridlayout)
 library(DT)
 library(plotly)
 library(dplyr)
@@ -29,7 +28,7 @@ process_fasta <- function(fasta) {
 #list of standard amino acids
 standard_aas <- c("A", "R", "N", "D", "C", "Q", "E", "G", "H", "I", "L", "K", "M", "F", "P", "S", "T", "W", "Y", "V")
 
-#function to check whether a AA sequence contains 
+#function to check whether a AA sequence contains. This is really slow/inefficient right now, look at options for improving. 
 test_for_ns_aas <- function(x) {
     
     check <- sapply(strsplit(x, "")[[1]], FUN = match, table = standard_aas)
@@ -46,22 +45,24 @@ test_for_ns_aas <- function(x) {
 }
 
 #NA default values for number reversed, number shuffled, contaminants added
+num_nr_prots = "NA"
 num_reversed = "NA"
 num_shuffled = "NA"
 num_contaminants = "NA"
+num_NS <- "NA"
 num_NS_removed = "NA"
 
 # Set up the UI for downloading and manipulating FASTA database files-----------
 ui <- navbarPage(
     title = "Protein Database Dashboard",
-    selected = "External Database (Uniprot/NCBI)",
+    selected = "FASTA Generator",
     header = add_busy_spinner(spin = "fading-circle"),
     collapsible = TRUE,
     theme = bslib::bs_theme(),
     
     #Set up tab for downloading from external databases-------------------------
     tabPanel(
-        title = "External Database (Uniprot/NCBI)",
+        title = "FASTA Generator",
         
         #set up row with two columns for input and database preview
         fluidRow(
@@ -75,9 +76,16 @@ ui <- navbarPage(
                        label = "Select FASTA Source",
                        choices = list(
                            NCBI = "ncbi",
-                           UniProt = "uniprot"
+                           UniProt = "uniprot",
+                           User = "user"
                        )
                    ),
+                   
+                   br(), 
+                   
+                   uiOutput("userUpload"), 
+                   
+                   br(), 
                    
                    #Add Checkboxes to select the options for FASTA manipulations
                    checkboxInput(
@@ -105,11 +113,19 @@ ui <- navbarPage(
                        width = "100%"
                    ),
                    checkboxInput(
+                       inputId = "nonStandard_check",
+                       label = "Check for sequences containing non-standard amino acids? (*this is slow)",
+                       value = FALSE,
+                       width = "100%"
+                   ),
+                   checkboxInput(
                        inputId = "nonStandard",
                        label = "Remove sequences containing non-standard amino acids?",
                        value = FALSE,
                        width = "100%"
                    ),
+                   
+                   br(),
                    
                    #Add action button to submit the request to download/process
                    actionButton(
@@ -117,14 +133,14 @@ ui <- navbarPage(
                        label = "Submit",
                        width = "100%"
                    ),
-                   downloadButton(
-                       "downloadData",
-                       "Download Database"
-                   ),
-                   downloadButton(
-                       "downloadLog",
-                       "Download Log"
-                   )
+                   
+                   br(),
+                   
+                   uiOutput("downloadData"),
+                   
+                   br(), 
+                   
+                   uiOutput("downloadLog")
             ),
             
             #Second column for displaying the reference tables
@@ -141,9 +157,8 @@ ui <- navbarPage(
 
 #Define server-side processing
 server <- function(input, output, session) {
-    options(shiny.maxRequestSize=200*1024^2) #sets maxiumum file upload size to 200 MB
+    options(shiny.maxRequestSize=200*1024^2) #sets maximum file upload size to 200 MB
     options(shiny.error = browser)
-    
     
     #When NCBI is selected, then show the table of all of the available FASTA from NCBI as a searchable DT::dataTable
     observe({
@@ -169,6 +184,23 @@ server <- function(input, output, session) {
             )
             )
         }
+        
+    })
+    
+    #When user provied FASTA is selected, generate the upload button
+    observe({
+        
+        #handle user provided fasta file input----------------------------------
+        if (input$dbSource == "user") {
+            
+            #make the download buttons appear if the job is submitted and completed
+            output$userUpload <- renderUI({
+                fileInput(inputId = "userFasta", label = "Choose FASTA", multiple = FALSE, accept = ".fasta")
+            })
+
+            
+        }
+        
     })
     
     #Reactive processing - once submit button is generated, the highlighted/selected line in the FASTA table
@@ -176,18 +208,16 @@ server <- function(input, output, session) {
     
     observeEvent(input$submitGenerate, {
         
-        #Get the row ID of the selected species to process
-        entry_id = input$myTable_rows_selected
-        
         #if user selected Uniprot, then download the FASTA file from UniProt FTP site
         if(input$dbSource == "uniprot") {
+            
+            #Get the row ID of the selected species to process
+            entry_id = input$myTable_rows_selected
             
             #get the link to the fasta file from the reference table
             fastaFile <- uniprot_ids_reference |> 
                 dplyr::filter(entry_number == entry_id) |> 
                 dplyr::pull(fasta_file)
-            
-            fastaFile <- "Eukaryota/UP000308549/UP000308549_706561.fasta.gz"	
             fastaFile <- paste0("https://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/reference_proteomes/", fastaFile)
             
             #get the genus_species name
@@ -206,6 +236,9 @@ server <- function(input, output, session) {
         
         #repeat for NCBI option
         if(input$dbSource == "ncbi") {
+            
+            #Get the row ID of the selected species to process
+            entry_id = input$myTable_rows_selected
             
             #get the link to the fasta file at NCBI from the reference table
             fastaFile <- ncbi_ids_reference |> 
@@ -230,26 +263,43 @@ server <- function(input, output, session) {
             download.file(fastaFile, temp)
         }
         
+        #repeat for user upload
+        if(input$dbSource == "user") {
+        
+            print(input$userFasta$datapath)
+            print(input$userFasta$name)
+            temp <-  input$userFasta$datapath
+            fastaFile <- input$userFasta$name
+            fastaName <- stringr::str_remove(fastaFile, ".fasta")
+        }
+        
         #begin downstream processing
         #read the FASTA file in using Biostrings readAAStringSet
         
         fasta_raw <- Biostrings::readAAStringSet(filepath = temp)
+        print("FASTA completed downloading/uploading and is ready to process...")
         
         #coerce into a data frame with the names and AA sequences
         fasta_df <- data.frame(seq_name = names(fasta_raw),
                                sequence = paste(fasta_raw))
         
         num_total_prots <- nrow(fasta_df)
+        print(paste("Total number of entries in the provided FASTA: ", num_total_prots, sep = ""))
         
-        num_NS <- num_total_prots - sum(sapply(fasta_df$sequence, test_for_ns_aas))
-        
-        #add flag onto seq_name for entries with non-standard amino acids
-        fasta_df <- fasta_df |> 
-            dplyr::rowwise() |> 
-            dplyr::mutate(seq_name = if_else(test_for_ns_aas(sequence), seq_name, paste0(seq_name, "_NONSTANDARD")))
+        if(input$nonStandard_check) {
+            
+            print("Checking for entries with non-standard amino acids...")
+            num_NS <- num_total_prots - sum(sapply(fasta_df$sequence, test_for_ns_aas))
+            #add flag onto seq_name for entries with non-standard amino acids
+            fasta_df <- fasta_df |> 
+                dplyr::rowwise() |> 
+                dplyr::mutate(seq_name = if_else(test_for_ns_aas(sequence), seq_name, paste0(seq_name, "_NONSTANDARD")))
+        }
         
         #handle non-redundant
         if(input$nonredundant) {
+            
+            print("Finding and removing redundant entries...")
             
             fasta_df <- fasta_df |> 
                 dplyr::distinct(sequence, .keep_all = TRUE)
@@ -259,8 +309,26 @@ server <- function(input, output, session) {
             
         }
         
+        #handle contaminants
+        if(input$contaminants) {
+            
+            print("Adding common contaminants")
+            
+            #read in the contaminants FASTA file 
+            cont_fasta <- Biostrings::readAAStringSet("./NR-Contaminants_2020-12-11.fasta")
+            cont_df <- data.frame(seq_name = names(cont_fasta),
+                                  sequence = paste(cont_fasta))
+            num_contaminants <- nrow(cont_df)
+            
+            #add to the fasta data frame
+            fasta_df <- fasta_df |> dplyr::bind_rows(cont_df)
+            fastaName <- paste0(fastaName, "_wCont")
+        }
+        
         #handle reversed decoy sequences
         if(input$reverseSeqs) {
+            
+            print("Generating reversed decoy sequences...")
             
             decoy_df <- fasta_df |> 
                 dplyr::mutate(seq_name = paste0("Reverse_", seq_name),
@@ -274,23 +342,10 @@ server <- function(input, output, session) {
             num_reversed <- nrow(fasta_df |> dplyr::filter(str_detect(seq_name, "Reverse")))
         }
         
-        #handle contaminants
-        if(input$contaminants) {
-            
-            #read in the contaminants FASTA file 
-            cont_fasta <- Biostrings::readAAStringSet("./NR-Contaminants_2020-12-11.fasta")
-            cont_df <- data.frame(seq_name = names(cont_fasta),
-                                  sequence = paste(cont_fasta))
-            num_contaminants <- nrow(cont_df)
-            
-            #add to the fasta data frame
-            fasta_df <- fasta_df |> dplyr::bind_rows(cont_df)
-            fastaName <- paste0(fastaName, "_wCont")
-        }
-        
-        
         #handle shuffling sequences
         if(input$shuffleSeqs) {
+            
+            print("Generating shuffled decoy sequences...")
             
             shuffled_df <- fasta_df |> 
                 dplyr::mutate(seq_name = paste0("SHUFFLED_", stringr::word(seq_name, 1), " ", "FALSE POSITIVE"),
@@ -308,6 +363,8 @@ server <- function(input, output, session) {
         #Handling to remove sequences with non-standard amino acids
         if(input$nonStandard) {
             
+            print("Removing entries with non-standard amino acids...")
+            
             num_starting_prots <- nrow(fasta_df)
             
             fasta_df <- fasta_df |> 
@@ -322,11 +379,24 @@ server <- function(input, output, session) {
         #write the final FASTA file out
         #convert the object back from df to XStringSet
         
+        print("Generating output FASTA and processing log...")
+        
         fasta_dff <- Biostrings::AAStringSet(fasta_df$sequence)
         names(fasta_dff) <- fasta_df$seq_name
         
+        #make the download buttons appear if the job is submitted and completed
+        output$downloadData <- renderUI({
+            req(input$submitGenerate, exists("fasta_dff"))
+            downloadButton(outputId = "downloadDataDB", label = "Download Database")
+        })
+        
+        output$downloadLog<- renderUI({
+            req(input$submitGenerate, exists("fasta_dff"))
+            downloadButton(outputId = "downloadDataLog", label = "Download Log")
+        })
+        
         # Download FASTA file of processed database ----------------------------
-        output$downloadData <- downloadHandler(
+        output$downloadDataDB <- downloadHandler(
             filename = function() {
                 paste0(fastaName, "_", date, ".fasta")
             },
@@ -336,14 +406,14 @@ server <- function(input, output, session) {
         )
         
         #Download txt file of processing log -----------------------------------
-        output$downloadLog <- downloadHandler(
+        output$downloadDataLog<- downloadHandler(
             filename = function() {
                 paste0(fastaName, "_", date, "_processing_log.txt")
             },
             content = function(file) {
                 sink(file)
                 cat(
-                    paste0("Input FASTA file downloaded from ", fastaFile, " on ", date, "\n",
+                    paste0("Input FASTA file downloaded/uploaded from ", fastaFile, " on ", date, "\n",
                            "Total number of proteins in original FASTA: ", num_total_prots, ".\n",
                            "Total number of non-redundant proteins: ", num_nr_prots, ".\n", 
                            "Total number of contaminants added: ", num_contaminants, ".\n", 
@@ -361,4 +431,10 @@ server <- function(input, output, session) {
 
 
 shinyApp(ui, server)
+
+
+
+
+
+
 
