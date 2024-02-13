@@ -11,41 +11,8 @@ library(shinybusy)
 
 #Global:
 
-#download the latest update of the NCBI RefSeq assembly table and and format
-temp_ncbi <- tempfile()
-curl::curl_download(url="https://ftp.ncbi.nlm.nih.gov/genomes/refseq/assembly_summary_refseq.txt", destfile = temp_ncbi)
-
-#read in and clean up formatting
-ncbi_refseq_table <- data.table::fread(temp_ncbi, skip=1)
-ncbi_ids_reference <- ncbi_refseq_table |> 
-    janitor::clean_names() |> 
-    dplyr::filter(refseq_category %in% c("reference genome", "representative genome")) |> 
-    dplyr::select(organism_name, infraspecific_name, taxid, species_taxid, seq_rel_date, ftp_path) |> 
-    dplyr::mutate(entry_number = dplyr::row_number()) |> 
-    tidyr::separate(col = organism_name, into = c("genus", "species"), sep = " ", remove=FALSE) |> 
-    dplyr::mutate(short_species = paste(stringr::str_sub(genus, 1, 1), species, sep="_"))
-
-#download the README of the current release for the UniProt knowledgebase/reference_proteomes
-temp_uniprot <- tempfile()
-curl::curl_download(url = "https://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/reference_proteomes/README", destfile = temp_uniprot)
-
-readme <- readLines(temp_uniprot)
-first_entry <- min(grep(pattern = "^UP", readme, ignore.case = FALSE, value = FALSE))
-last_entry <- max(grep(pattern = "^UP", readme, ignore.case = FALSE, value = FALSE))
-num_rows <- last_entry - (first_entry-1)
-uniprot_ids_reference <- data.table::fread(temp_uniprot, skip = (first_entry - 2), nrows = num_rows, header = T)
-uniprot_ids_reference <- uniprot_ids_reference |> 
-    janitor::clean_names() |> 
-    dplyr::mutate(species_name = stringr::str_remove(species_name, "\\\\"),
-                  superregnum = snakecase::to_title_case(superregnum),
-                  fasta_file = paste0(superregnum, "/", proteome_id, "/", proteome_id, "_", tax_id, ".fasta.gz")) |> 
-    tidyr::separate(col = species_name, into = c("genus", "species"), sep = " ", remove=FALSE) |> 
-    dplyr::mutate(short_species = paste(stringr::str_sub(genus, 1, 1), species, sep="_")) |> 
-    dplyr::rename(num_entries_main_fasta = number_1,
-                  num_entries_additional_fasta = number_2,
-                  num_entries_gene2acc_map = number_3) |> 
-    dplyr::mutate(entry_number = dplyr::row_number()) |> 
-    dplyr::select(species_name, everything())
+ncbi_ids_reference <- readRDS("./databases/ncbi_reference_table.Rds")
+uniprot_ids_reference <- readRDS("./databases/uniprot_ids_reference_table.Rds")
 
 #get today's data in YYYY-MM-DD
 date <- as.character(Sys.Date())
