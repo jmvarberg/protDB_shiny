@@ -39,6 +39,7 @@ jobs:
             any::stringi
             any::BiocManager
             any::BiocVersion
+            any::BiocGenerics
             
       - name: Update Databases
         run: Rscript -e 'source("./scripts/update_databases.R")'
