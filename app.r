@@ -147,7 +147,7 @@ ui <- navbarPage(
             column(9,
                    DT::dataTableOutput(
                        outputId = "myTable",
-                       width = "100%"
+                       width = "95%"
                    )
             )
         )
