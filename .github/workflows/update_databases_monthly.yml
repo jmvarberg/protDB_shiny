@@ -18,15 +18,10 @@ jobs:
         uses: r-lib/actions/setup-r-dependencies@v2
         with:
           packages: |
-            any::shiny
-            any::DT
-            any::plotly
+	    any::data.table
+            any::janitor
             any::dplyr
-            any::Biostrings
-            any::stringi
-            any::stringr
-            any::shinyalert
-            any::shinybusy
+            any::tidyr
             
       - name: Check out repository
         uses: actions/checkout@v4
