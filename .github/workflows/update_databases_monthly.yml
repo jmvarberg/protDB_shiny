@@ -19,8 +19,6 @@ jobs:
         with:
           use-public-rspm: true
 
-      - uses: r-lib/actions/setup-renv@v2
-
       - name: Install R packages
         uses: r-lib/actions/setup-r-dependencies@v2
         with:
@@ -31,22 +29,28 @@ jobs:
             any::tidyr
             any::data.table
             any::rsconnect
-            any::shiny
-            any::DT
-            any::Biostrings
-            any::shinyalert
-            any::shinybusy
-            any::stringr
-            any::stringi
+            any::renv
+            #any::shiny
+            #any::DT
+            #any::Biostrings
+            #any::shinyalert
+            #any::shinybusy
+            #any::stringr
+            #any::stringi
             
       - name: Update Databases
         run: Rscript -e 'source("./scripts/update_databases.R")'
+
+      - name: Generate renv lock file
+        run: Rscript -e 'renv::snapshot()'
+        
+      - uses: r-lib/actions/setup-renv@v2
 
       - name: Commit files using git
         run: |
           git config --local user.email "actions@github.com"
           git config --local user.name "GitHub Actions"
-          git add ./databases/ncbi_reference_table.Rds ./databases/uniprot_ids_reference_table.Rds
+          git add -A
           git commit -m "automated monthly database update"
           git push origin
 
