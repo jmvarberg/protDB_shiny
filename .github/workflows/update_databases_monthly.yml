@@ -1,6 +1,7 @@
 name: update-fasta-dbs
 
 on:
+  push:
   schedule:
     - cron: 30 12 * * *
 
