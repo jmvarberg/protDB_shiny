@@ -42,9 +42,6 @@ jobs:
             
       - name: Update Databases
         run: Rscript -e 'source("./scripts/update_databases.R")'
-
-      - name: Generate renv lock file
-        run: Rscript -e 'renv::snapshot()'
         
       - uses: r-lib/actions/setup-renv@v2
 
