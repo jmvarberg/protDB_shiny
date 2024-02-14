@@ -8,9 +8,21 @@ on:
 jobs:
   update-dbs:
     runs-on: ubuntu-latest
-
       
-    steps:       
+    steps:   
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Check last commit message
+        id: commit-message
+        run: echo "COMMIT_MESSAGE=$(git log -1 --pretty=format:'%s')" >> $GITHUB_ENV
+
+      - name: Skip if commit is automated
+        if: contains(env.COMMIT_MESSAGE, '[automated monthly database update]')
+        run: |
+          echo "Automated commit detected - skipping job"
+          exit 0
+          
       - name: Set up R
         uses: r-lib/actions/setup-r@v2
 
@@ -23,9 +35,6 @@ jobs:
             any::dplyr
             any::tidyr
             any::data.table
-            
-      - name: Check out repository
-        uses: actions/checkout@v4
             
       - name: Update Databases
         run: Rscript -e 'source("./scripts/update_databases.R")'
