@@ -37,6 +37,8 @@ jobs:
             any::shinybusy
             any::stringr
             any::stringi
+            any::BiocManager
+            any::BiocVersion
             
       - name: Update Databases
         run: Rscript -e 'source("./scripts/update_databases.R")'
