@@ -30,13 +30,13 @@ jobs:
             any::data.table
             any::rsconnect
             any::renv
-            #any::shiny
-            #any::DT
-            #any::Biostrings
-            #any::shinyalert
-            #any::shinybusy
-            #any::stringr
-            #any::stringi
+            any::shiny
+            any::DT
+            any::Biostrings
+            any::shinyalert
+            any::shinybusy
+            any::stringr
+            any::stringi
             
       - name: Update Databases
         run: Rscript -e 'source("./scripts/update_databases.R")'
