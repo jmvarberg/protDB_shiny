@@ -1,6 +1,5 @@
 library(shiny)
 library(DT)
-library(plotly)
 library(dplyr)
 library(Biostrings)
 library(stringi)
