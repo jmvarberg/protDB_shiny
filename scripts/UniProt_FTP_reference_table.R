@@ -19,4 +19,5 @@ uniprot_ids_reference <- uniprot_ids_reference |>
                   num_entries_gene2acc_map = number_3) |> 
     dplyr::mutate(entry_number = dplyr::row_number()) |> 
     dplyr::select(species_name, everything())
-saveRDS(uniprot_ids_reference, "./databases/uniprot_ids_reference_table.Rds")
+#saveRDS(uniprot_ids_reference, "./databases/uniprot_ids_reference_table.Rds")
+fst::write.fst(uniprot_ids_reference, "./databases/uniprot_ids_reference_table.fst")

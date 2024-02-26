@@ -1,3 +1,4 @@
+options(repos = BiocManager::repositories())
 library(shiny)
 library(DT)
 library(dplyr)
@@ -6,12 +7,12 @@ library(stringi)
 library(stringr)
 library(shinyalert)
 library(shinybusy)
+library(fst)
 
 
 #Global:
-
-ncbi_ids_reference <- readRDS("./databases/ncbi_reference_table.Rds")
-uniprot_ids_reference <- readRDS("./databases/uniprot_ids_reference_table.Rds")
+ncbi_ids_reference <- fst::read.fst("./databases/ncbi_reference_table.fst")
+uniprot_ids_reference <- fst::read.fst("./databases/uniprot_ids_reference_table.fst")
 
 #get today's data in YYYY-MM-DD
 date <- as.character(Sys.Date())

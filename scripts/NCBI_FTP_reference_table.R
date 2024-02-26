@@ -11,4 +11,7 @@ ncbi_ids_reference <- ncbi_refseq_table |>
     dplyr::mutate(entry_number = dplyr::row_number()) |> 
     tidyr::separate(col = organism_name, into = c("genus", "species"), sep = " ", remove=FALSE) |> 
     dplyr::mutate(short_species = paste(stringr::str_sub(genus, 1, 1), species, sep="_"))
-saveRDS(ncbi_refseq_table, "./databases/ncbi_reference_table.Rds")
+#saveRDS(ncbi_refseq_table, "./databases/ncbi_reference_table.Rds")
+
+#write out with fst package
+fst::write.fst(ncbi_ids_reference, path = "./databases/ncbi_reference_table.fst")
