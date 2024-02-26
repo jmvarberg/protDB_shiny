@@ -5,9 +5,6 @@ account: jmvarberg
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 11332342
-bundleId: 8299251
+bundleId: 8299505
 url: https://jmvarberg.shinyapps.io/protoDB_dev/
 version: 1
-asMultiple: FALSE
-asStatic: FALSE
-ignoredFiles: auto_update_db_app.sh
