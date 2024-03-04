@@ -12,4 +12,6 @@ If no manipulation of the FASTA file is desired, this dashboard can be used to d
 
 Lastly, in addition to generating the output FASTA file, a text log file is also generated that captures the date and origin of the downloaded FASTA file, as well as basic summary statistics about the number of entries before and after any manipulations are performed.
 
-The dashboard can be accessed at https://jmvarberg.shinyapps.io/protDB_shiny/.
+The dashboard can be accessed at https://jmvarberg.shinyapps.io/protDB_generator/.
+
+Databases last updated on Mar 04, 2024.
