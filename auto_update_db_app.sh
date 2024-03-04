@@ -2,7 +2,7 @@
 
 # Load modules
 ml simr
-ml R/4.3.1
+ml R/4.2.3
 
 # Navigate to app directory
 cd ~/ShinyApps/protDB_shiny
