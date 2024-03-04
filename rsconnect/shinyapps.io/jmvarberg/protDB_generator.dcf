@@ -5,9 +5,6 @@ account: jmvarberg
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 11396189
-bundleId: 8327730
+bundleId: 8327896
 url: https://jmvarberg.shinyapps.io/protDB_generator/
 version: 1
-asMultiple: FALSE
-asStatic: FALSE
-ignoredFiles: auto_update_db_app.sh|databases/ncbi_reference_table.Rds|databases/uniprot_ids_reference_table.Rds

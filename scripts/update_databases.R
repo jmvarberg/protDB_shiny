@@ -9,4 +9,6 @@ source("./scripts/NCBI_FTP_reference_table.R")
 source("./scripts/UniProt_FTP_reference_table.R")
 
 #push to shinyapps.io
-rsconnect::deployApp(appName = "protoDB_dev", appFiles = c("app.r", "./databases/ncbi_reference_table.fst", "./databases/uniprot_ids_reference_table.fst", "README.md"), account = "jmvarberg", server = "shinyapps.io") 
+rsconnect::deployApp(appName = "protDB_generator", 
+                     account = "jmvarberg", 
+                     server = "shinyapps.io") 
