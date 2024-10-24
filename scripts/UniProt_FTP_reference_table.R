@@ -11,7 +11,8 @@ uniprot_ids_reference <- uniprot_ids_reference |>
     janitor::clean_names() |> 
     dplyr::mutate(species_name = stringr::str_remove(species_name, "\\\\"),
                   superregnum = snakecase::to_title_case(superregnum),
-                  fasta_file = paste0(superregnum, "/", proteome_id, "/", proteome_id, "_", tax_id, ".fasta.gz")) |> 
+                  fasta_file = paste0(superregnum, "/", proteome_id, "/", proteome_id, "_", tax_id, ".fasta.gz"),
+                  additional_fasta_file = paste0(superregnum, "/", proteome_id, "/", proteome_id, "_", tax_id, "_additional.fasta.gz")) |> 
     tidyr::separate(col = species_name, into = c("genus", "species"), sep = " ", remove=FALSE) |> 
     dplyr::mutate(short_species = paste(stringr::str_sub(genus, 1, 1), species, sep="_")) |> 
     dplyr::rename(num_entries_main_fasta = number_1,

@@ -51,6 +51,11 @@ num_shuffled = "NA"
 num_contaminants = "NA"
 num_NS <- "NA"
 num_NS_removed = "NA"
+num_total_prots_canonical = "NA"
+num_total_prots_iso = "NA"
+num_total_combined = "NA"
+fastaFile = "NA"
+isoformFastaFile = "NA"
 
 # Set up the UI for downloading and manipulating FASTA database files-----------
 ui <- navbarPage(
@@ -88,6 +93,16 @@ ui <- navbarPage(
                    br(), 
                    
                    #Add Checkboxes to select the options for FASTA manipulations
+                   #conditional box if uniprot selected
+                   conditionalPanel(
+                       condition = "input.dbSource == 'uniprot'",
+                       checkboxInput(
+                           inputId = "canonical_only",
+                           label = "Use Database with ONLY canonical sequences? If selected, isoforms will not be included.",
+                           value = FALSE,
+                           width = "100%"
+                       )
+                   ),
                    checkboxInput(
                        inputId = "nonredundant",
                        label = "Make non-redundant",
@@ -197,7 +212,7 @@ server <- function(input, output, session) {
             output$userUpload <- renderUI({
                 fileInput(inputId = "userFasta", label = "Choose FASTA", multiple = FALSE, accept = ".fasta")
             })
-
+            
             
         }
         
@@ -225,13 +240,47 @@ server <- function(input, output, session) {
                 dplyr::filter(entry_number == entry_id) |> 
                 dplyr::pull(short_species)
             
-            zipped <- basename(fastaFile)
-            unzipped <- stringr::str_remove(basename(fastaFile), ".gz")
-            fastaName <- paste0(genus_spec, "_", "UniProt_", stringr::str_remove(basename(fastaFile), ".fasta.gz"))
+            #logic to handle selection of canonical vs. with isoforms
+            if(input$canonical_only) {
+                
+                fasta_zipped <- basename(fastaFile)
+                unzipped <- stringr::str_remove(basename(fastaFile), ".gz")
+                fastaName <- paste0(genus_spec, "_", "UniProt_", stringr::str_remove(basename(fastaFile), ".fasta.gz"))
+                
+                #download the fasta.gz as a tempfile
+                temp <- tempfile()
+                download.file(fastaFile, temp)
+                
+            } else {
+                
+                #get the link to the isoform fasta file from the reference table
+                isoformFastaFile <- uniprot_ids_reference |> 
+                    dplyr::filter(entry_number == entry_id) |> 
+                    dplyr::pull(additional_fasta_file)
+                isoformFastaFile <- paste0("https://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/reference_proteomes/", isoformFastaFile)
+                
+                canonical_fasta_zipped <- basename(fastaFile)
+                canonical_unzipped <- stringr::str_remove(basename(fastaFile), ".gz")
+                canonical_fastaName <- paste0(genus_spec, "_", "UniProt_", stringr::str_remove(basename(fastaFile), ".fasta.gz"))
+                
+                #download the fasta.gz as a tempfile
+                temp_canonical <- tempfile()
+                download.file(fastaFile, temp_canonical)
+                
+                #repeat for isoform version
+                iso_fasta_zipped <- basename(isoformFastaFile)
+                iso_unzipped <- stringr::str_remove(basename(isoformFastaFile), ".gz")
+                iso_fastaName <- paste0(genus_spec, "_", "UniProt_", stringr::str_remove(basename(isoformFastaFile), "_additional.fasta.gz"))
+                
+                #download the fasta.gz as a tempfile
+                temp_iso <- tempfile()
+                download.file(isoformFastaFile, temp_iso)
+                
+                fastaName <- canonical_fastaName #give the name to be used to just match the canonical. This will be used to add NR, SHUFF etc downstream.
+                
+            }
             
-            #download the fasta.gz as a tempfile
-            temp <- tempfile()
-            download.file(fastaFile, temp)
+            
         }
         
         #repeat for NCBI option
@@ -265,7 +314,7 @@ server <- function(input, output, session) {
         
         #repeat for user upload
         if(input$dbSource == "user") {
-        
+            
             print(input$userFasta$datapath)
             print(input$userFasta$name)
             temp <-  input$userFasta$datapath
@@ -275,16 +324,47 @@ server <- function(input, output, session) {
         
         #begin downstream processing
         #read the FASTA file in using Biostrings readAAStringSet
+        if(input$canonical_only) {
+            fasta_raw <- Biostrings::readAAStringSet(filepath = temp)
+            print("FASTA completed downloading/uploading and is ready to process...")
+            
+            #coerce into a data frame with the names and AA sequences
+            fasta_df <- data.frame(seq_name = names(fasta_raw),
+                                   sequence = paste(fasta_raw))
+            
+            num_total_prots_canonical <- nrow(fasta_df)
+            print(paste("Total number of entries in the provided FASTA: ", num_total_prots_canonical, sep = ""))
+        }
         
-        fasta_raw <- Biostrings::readAAStringSet(filepath = temp)
-        print("FASTA completed downloading/uploading and is ready to process...")
+        if(!input$canonical_only) {
+            
+            canonical_raw <- Biostrings::readAAStringSet(filepath = temp_canonical)
+            isoform_raw <- Biostrings::readAAStringSet(filepath = temp_iso)
+            print("FASTA files completed downloading/uploading and are ready to process...")
+            
+            #coerce into a data frame with the names and AA sequences
+            canonical_fasta_df <- data.frame(seq_name = names(canonical_raw),
+                                   sequence = paste(canonical_raw))
+            
+            num_total_prots_canonical <- nrow(canonical_fasta_df)
+            print(paste("Total number of entries in the canonical FASTA: ", num_total_prots_canonical, sep = ""))
+            
+            #coerce into a data frame with the names and AA sequences
+            iso_fasta_df <- data.frame(seq_name = names(isoform_raw),
+                                             sequence = paste(isoform_raw))
+
+            num_total_prots_iso <- nrow(iso_fasta_df)
+            print(paste("Total number of entries in the isoform FASTA: ", num_total_prots_iso, sep = ""))
+            
+            #concatenate into single fasta file for next processing steps
+            fasta_df <- canonical_fasta_df |> 
+                dplyr::bind_rows(iso_fasta_df)
+            
+            num_total_combined <- nrow(fasta_df)
+            print(paste("Total number of entries in the combined FASTA: ", num_total_combined, sep = ""))
+            
+        }
         
-        #coerce into a data frame with the names and AA sequences
-        fasta_df <- data.frame(seq_name = names(fasta_raw),
-                               sequence = paste(fasta_raw))
-        
-        num_total_prots <- nrow(fasta_df)
-        print(paste("Total number of entries in the provided FASTA: ", num_total_prots, sep = ""))
         
         if(input$nonStandard_check) {
             
@@ -315,7 +395,8 @@ server <- function(input, output, session) {
             print("Adding common contaminants")
             
             #read in the contaminants FASTA file 
-            cont_fasta <- Biostrings::readAAStringSet("./NR-Contaminants_2020-12-11.fasta")
+            #cont_fasta <- Biostrings::readAAStringSet("./NR-Contaminants_2020-12-11.fasta")
+            cont_fasta <- Biostrings::readAAStringSet("./NIHMS1873978-supplement-Contaminant_FASTA.fasta")
             cont_df <- data.frame(seq_name = names(cont_fasta),
                                   sequence = paste(cont_fasta))
             num_contaminants <- nrow(cont_df)
@@ -413,8 +494,11 @@ server <- function(input, output, session) {
             content = function(file) {
                 sink(file)
                 cat(
-                    paste0("Input FASTA file downloaded/uploaded from ", fastaFile, " on ", date, "\n",
-                           "Total number of proteins in original FASTA: ", num_total_prots, ".\n",
+                    paste0("Canonical FASTA file downloaded/uploaded from ", fastaFile, " on ", date, ".\n",
+                           "Isoform FASTA file downloaded/uploaded from ", isoformFastaFile, " on ", date, ".\n",
+                           "Total number of proteins in canonical FASTA: ", num_total_prots_canonical, ".\n",
+                           "Total number of proteins in isoform FASTA: ", num_total_prots_iso, ".\n",
+                           "Total number of proteins in combined canonical/isoform FASTA: ", num_total_combined, ".\n",
                            "Total number of non-redundant proteins: ", num_nr_prots, ".\n", 
                            "Total number of contaminants added: ", num_contaminants, ".\n", 
                            "Total number of reversed proteins: ", num_reversed, ". \n",
