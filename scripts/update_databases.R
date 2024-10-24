@@ -1,4 +1,5 @@
 #github action to run database refresh and publish to shinyapps.io
+options(repos = BiocManager::repositories())
 library(janitor)
 library(dplyr)
 library(tidyr)

@@ -1,10 +1,10 @@
 name: protDB_generator
-title: protDB_generator
+title: protDB_shiny
 username: jmvarberg
 account: jmvarberg
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 11396189
-bundleId:
+bundleId: 9265189
 url: https://jmvarberg.shinyapps.io/protDB_generator/
 version: 1
