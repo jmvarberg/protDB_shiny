@@ -54,6 +54,7 @@ num_NS_removed = "NA"
 num_total_prots_canonical = "NA"
 num_total_prots_iso = "NA"
 num_total_combined = "NA"
+num_total_prots = "NA"
 fastaFile = "NA"
 isoformFastaFile = "NA"
 
@@ -166,6 +167,84 @@ ui <- navbarPage(
                    )
             )
         )
+    ),
+    
+    #Second tab for Fasta Manipulations (filtering, concatenation)
+    tabPanel(
+        title = "FASTA Manipulator",
+        
+        #set up row with two columns for input and database preview
+        fluidRow(
+            
+            #first column - for user input
+            column(3,
+                   
+                   #Buttons to select manipulation type--------
+                   radioButtons(
+                       inputId = "manipulationType",
+                       label = "Select FASTA Manipulation Type",
+                       choices = list(
+                           Filter = "filter",
+                           Concatenate = "concatenate"
+                       )
+                   ),
+                   
+                   #File Upload for FASTA file
+                   fileInput(inputId = "userFasta_manipulate", 
+                             label = "Choose FASTA to Manipulate", 
+                             multiple = FALSE, 
+                             accept = ".fasta"),
+                   
+                   #conditionally show second upload for concatenation
+                   conditionalPanel(
+                       condition = "input.manipulationType == 'concatenate'",
+                       fileInput(inputId = "fastaToConcat", 
+                                 label = "Choose Second FASTA to Concatenate with First", 
+                                 multiple = FALSE, 
+                                 accept = ".fasta")
+                   ),
+                   
+                   #conditionally allow string input for filtering
+                   #conditionally show second upload for concatenation
+                   conditionalPanel(
+                       condition = "input.manipulationType == 'filter'",
+                       textInput(inputId = "filterString", 
+                                 label = "Enter string/text in FASTA header to use for filtering.",
+                                 placeholder = "Fragment, isoform, MOUSE_, etc."
+                       )
+                   ),
+                   
+                   br(),
+                   
+                   #Display text with number of entries in FASTA containint the provided string
+                   conditionalPanel(
+                       condition = "input.manipulationType == 'filter'",
+                       textOutput("rowCountText")
+                       ),
+                   
+                   #Add action button to submit the request to download/process
+                   actionButton(
+                       inputId = "submitManipulate",
+                       label = "Submit for Manipulation",
+                       width = "100%"
+                   ),
+                   br(),
+                   
+                   uiOutput("downloadManipulationDB"),
+                   
+                   br(), 
+                   
+                   uiOutput("downloadManipulationLog")
+            ),
+            
+            #Second column for displaying the reference tables
+            column(9,
+                   DT::dataTableOutput(
+                       outputId = "modFastaInput",
+                       width = "95%"
+                   )
+            )
+        )
     )
 )
 
@@ -202,7 +281,7 @@ server <- function(input, output, session) {
         
     })
     
-    #When user provied FASTA is selected, generate the upload button
+    #When user provided FASTA is selected, generate the upload button
     observe({
         
         #handle user provided fasta file input----------------------------------
@@ -229,12 +308,6 @@ server <- function(input, output, session) {
             #Get the row ID of the selected species to process
             entry_id = input$myTable_rows_selected
             
-            #get the link to the fasta file from the reference table
-            fastaFile <- uniprot_ids_reference |> 
-                dplyr::filter(entry_number == entry_id) |> 
-                dplyr::pull(fasta_file)
-            fastaFile <- paste0("https://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/reference_proteomes/", fastaFile)
-            
             #get the genus_species name
             genus_spec <- uniprot_ids_reference |> 
                 dplyr::filter(entry_number == entry_id) |> 
@@ -242,6 +315,12 @@ server <- function(input, output, session) {
             
             #logic to handle selection of canonical vs. with isoforms
             if(input$canonical_only) {
+                
+                #get the link to the fasta file from the reference table
+                fastaFile <- uniprot_ids_reference |> 
+                    dplyr::filter(entry_number == entry_id) |> 
+                    dplyr::pull(fasta_file)
+                fastaFile <- paste0("https://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/reference_proteomes/", fastaFile)
                 
                 fasta_zipped <- basename(fastaFile)
                 unzipped <- stringr::str_remove(basename(fastaFile), ".gz")
@@ -251,32 +330,93 @@ server <- function(input, output, session) {
                 temp <- tempfile()
                 download.file(fastaFile, temp)
                 
+                fasta_raw <- Biostrings::readAAStringSet(filepath = temp)
+                print("FASTA completed downloading/uploading and is ready to process...")
+                
+                #coerce into a data frame with the names and AA sequences
+                fasta_df <- data.frame(seq_name = names(fasta_raw),
+                                       sequence = paste(fasta_raw))
+                
+                num_total_prots_canonical <- nrow(fasta_df)
+                print(paste("Total number of entries in the provided FASTA: ", num_total_prots_canonical, sep = ""))
+                
             } else {
                 
-                #get the link to the isoform fasta file from the reference table
-                isoformFastaFile <- uniprot_ids_reference |> 
+                #if user selected to also include the isoforms in "additional.fasta", first check whether there are any entries in the additional fasta. can use info in "num_entries_additional_fasta" to check
+                additional_check <- uniprot_ids_reference |> 
                     dplyr::filter(entry_number == entry_id) |> 
-                    dplyr::pull(additional_fasta_file)
-                isoformFastaFile <- paste0("https://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/reference_proteomes/", isoformFastaFile)
+                    dplyr::pull(num_entries_additional_fasta)
                 
-                canonical_fasta_zipped <- basename(fastaFile)
-                canonical_unzipped <- stringr::str_remove(basename(fastaFile), ".gz")
-                canonical_fastaName <- paste0(genus_spec, "_", "UniProt_", stringr::str_remove(basename(fastaFile), ".fasta.gz"))
+                print("Number of entries in additional fasta: ")
+                print(additional_check)
                 
-                #download the fasta.gz as a tempfile
-                temp_canonical <- tempfile()
-                download.file(fastaFile, temp_canonical)
+                if(additional_check == 0) {
+                    
+                    shinyalert::shinyalert(title = "Additional FASTA with isoforms doesn't exist.", 
+                                           text = paste0("Selected species does not have any isoforms provided in additional fasta file. Please check box to only use 'canonical' and resubmit."),
+                                           type = "error")
+                } 
                 
-                #repeat for isoform version
-                iso_fasta_zipped <- basename(isoformFastaFile)
-                iso_unzipped <- stringr::str_remove(basename(isoformFastaFile), ".gz")
-                iso_fastaName <- paste0(genus_spec, "_", "UniProt_", stringr::str_remove(basename(isoformFastaFile), "_additional.fasta.gz"))
+                if(additional_check > 0) {
+                    
+                    #get the link to the isoform fasta file from the reference table
+                    isoformFastaFile <- uniprot_ids_reference |> 
+                        dplyr::filter(entry_number == entry_id) |> 
+                        dplyr::pull(additional_fasta_file)
+                    isoformFastaFile <- paste0("https://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/reference_proteomes/", isoformFastaFile)
+                    
+                    #get the link to the fasta file from the reference table
+                    fastaFile <- uniprot_ids_reference |> 
+                        dplyr::filter(entry_number == entry_id) |> 
+                        dplyr::pull(fasta_file)
+                    fastaFile <- paste0("https://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/reference_proteomes/", fastaFile)
+                    
+                    canonical_fasta_zipped <- basename(fastaFile)
+                    canonical_unzipped <- stringr::str_remove(basename(fastaFile), ".gz")
+                    canonical_fastaName <- paste0(genus_spec, "_", "UniProt_", stringr::str_remove(basename(fastaFile), ".fasta.gz"))
+                    
+                    #download the fasta.gz as a tempfile
+                    temp_canonical <- tempfile()
+                    download.file(fastaFile, temp_canonical)
+                    
+                    #repeat for isoform version
+                    iso_fasta_zipped <- basename(isoformFastaFile)
+                    iso_unzipped <- stringr::str_remove(basename(isoformFastaFile), ".gz")
+                    iso_fastaName <- paste0(genus_spec, "_", "UniProt_", stringr::str_remove(basename(isoformFastaFile), "_additional.fasta.gz"))
+                    
+                    #download the fasta.gz as a tempfile
+                    temp_iso <- tempfile()
+                    download.file(isoformFastaFile, temp_iso)
+                    
+                    fastaName <- canonical_fastaName #give the name to be used to just match the canonical. This will be used to add NR, SHUFF etc downstream.
                 
-                #download the fasta.gz as a tempfile
-                temp_iso <- tempfile()
-                download.file(isoformFastaFile, temp_iso)
+                    #read in and process fasta files
+                    canonical_raw <- Biostrings::readAAStringSet(filepath = temp_canonical)
+                    isoform_raw <- Biostrings::readAAStringSet(filepath = temp_iso)
+                    print("FASTA files completed downloading/uploading and are ready to process...")
+                    
+                    #coerce into a data frame with the names and AA sequences
+                    canonical_fasta_df <- data.frame(seq_name = names(canonical_raw),
+                                                     sequence = paste(canonical_raw))
+                    
+                    num_total_prots_canonical <- nrow(canonical_fasta_df)
+                    print(paste("Total number of entries in the canonical FASTA: ", num_total_prots_canonical, sep = ""))
+                    
+                    #coerce into a data frame with the names and AA sequences
+                    iso_fasta_df <- data.frame(seq_name = names(isoform_raw),
+                                               sequence = paste(isoform_raw))
+                    
+                    num_total_prots_iso <- nrow(iso_fasta_df)
+                    print(paste("Total number of entries in the isoform FASTA: ", num_total_prots_iso, sep = ""))
+                    
+                    #concatenate into single fasta file for next processing steps
+                    fasta_df <- canonical_fasta_df |> 
+                        dplyr::bind_rows(iso_fasta_df)
+                    
+                    num_total_combined <- nrow(fasta_df)
+                    print(paste("Total number of entries in the combined FASTA: ", num_total_combined, sep = ""))
+                }
                 
-                fastaName <- canonical_fastaName #give the name to be used to just match the canonical. This will be used to add NR, SHUFF etc downstream.
                 
             }
             
@@ -310,6 +450,19 @@ server <- function(input, output, session) {
             #download the fasta.gz as a tempfile
             temp <- tempfile()
             download.file(fastaFile, temp)
+            
+            #read in and process fasta file
+            fasta_raw <- Biostrings::readAAStringSet(filepath = temp)
+            print("FASTA completed downloading/uploading and is ready to process...")
+            
+            #coerce into a data frame with the names and AA sequences
+            fasta_df <- data.frame(seq_name = names(fasta_raw),
+                                   sequence = paste(fasta_raw))
+            
+            num_total_prots <- nrow(fasta_df)
+            num_total_prots_canonical <- num_total_prots
+            print(paste("Total number of entries in the provided FASTA: ", num_total_prots, sep = ""))
+            
         }
         
         #repeat for user upload
@@ -320,11 +473,9 @@ server <- function(input, output, session) {
             temp <-  input$userFasta$datapath
             fastaFile <- input$userFasta$name
             fastaName <- stringr::str_remove(fastaFile, ".fasta")
-        }
-        
-        #begin downstream processing
-        #read the FASTA file in using Biostrings readAAStringSet
-        if(input$canonical_only) {
+            
+            #read in and process fasta
+            #read in and process fasta file
             fasta_raw <- Biostrings::readAAStringSet(filepath = temp)
             print("FASTA completed downloading/uploading and is ready to process...")
             
@@ -332,39 +483,13 @@ server <- function(input, output, session) {
             fasta_df <- data.frame(seq_name = names(fasta_raw),
                                    sequence = paste(fasta_raw))
             
-            num_total_prots_canonical <- nrow(fasta_df)
-            print(paste("Total number of entries in the provided FASTA: ", num_total_prots_canonical, sep = ""))
-        }
-        
-        if(!input$canonical_only) {
-            
-            canonical_raw <- Biostrings::readAAStringSet(filepath = temp_canonical)
-            isoform_raw <- Biostrings::readAAStringSet(filepath = temp_iso)
-            print("FASTA files completed downloading/uploading and are ready to process...")
-            
-            #coerce into a data frame with the names and AA sequences
-            canonical_fasta_df <- data.frame(seq_name = names(canonical_raw),
-                                   sequence = paste(canonical_raw))
-            
-            num_total_prots_canonical <- nrow(canonical_fasta_df)
-            print(paste("Total number of entries in the canonical FASTA: ", num_total_prots_canonical, sep = ""))
-            
-            #coerce into a data frame with the names and AA sequences
-            iso_fasta_df <- data.frame(seq_name = names(isoform_raw),
-                                             sequence = paste(isoform_raw))
-
-            num_total_prots_iso <- nrow(iso_fasta_df)
-            print(paste("Total number of entries in the isoform FASTA: ", num_total_prots_iso, sep = ""))
-            
-            #concatenate into single fasta file for next processing steps
-            fasta_df <- canonical_fasta_df |> 
-                dplyr::bind_rows(iso_fasta_df)
-            
-            num_total_combined <- nrow(fasta_df)
-            print(paste("Total number of entries in the combined FASTA: ", num_total_combined, sep = ""))
+            num_total_prots <- nrow(fasta_df)
+            num_total_prots_canonical <- num_total_prots
+            print(paste("Total number of entries in the provided FASTA: ", num_total_prots, sep = ""))
             
         }
         
+        #begin downstream processing
         
         if(input$nonStandard_check) {
             
@@ -511,6 +636,242 @@ server <- function(input, output, session) {
             }
         )
     })
+    
+    #reactive display of uploaded FASTA for manipulation panel.
+    observe({
+        
+        req(input$userFasta_manipulate)
+        
+        #get path to uploaded file from temp name
+        #print(input$userFasta_manipulate$datapath)
+        #print(input$userFasta_manipulate$name)
+        temp <-  input$userFasta_manipulate$datapath
+        fastaFile <- input$userFasta_manipulate$name
+        fastaName <- stringr::str_remove(fastaFile, ".fasta")
+        
+        #read in the FASTA and convert to data frame
+        fasta <- Biostrings::readAAStringSet(filepath = temp)
+        
+        #coerce into a data frame with the names and AA sequences
+        fasta_df <- data.frame(seq_name = names(fasta),
+                               sequence = paste(fasta))
+        
+        output$modFastaInput <- DT::renderDataTable(fasta_df, server=TRUE, selection = "single", options = list(
+            scrollY="true",
+            scrollX="400px",
+            pageLength = 10,
+            lengthMenu = c(10, 25, 50, 100),
+            dom = 'Blfrtip'
+        )
+        )
+        
+        #display how many rows contain the provided string
+        # Reactive text output to display the count of rows containing the filter string
+        output$rowCountText <- renderText({
+            req(input$userFasta_manipulate, input$filterString) # Ensure input is available
+            filtered_count <- sum(grepl(input$filterString, fasta_df$seq_name, ignore.case = TRUE))
+            paste("Number of entries containing the string to filter:", filtered_count)
+        })
+    })
+    
+    
+    #reactive processing - manipulation. Once submit button pushed for manipulation, perform the desired manipulation
+    observeEvent(input$submitManipulate, {
+        
+        if(input$manipulationType == "filter") {
+            
+            #test functionality
+            testFasta <- "./NIHMS1873978-supplement-Contaminant_FASTA.fasta"
+            testFasta <- Biostrings::readAAStringSet(filepath = testFasta)
+            #coerce into a data frame with the names and AA sequences
+            fasta_df <- data.frame(seq_name = names(testFasta),
+                                   sequence = paste(testFasta))
+
+            rowsInput <- nrow(fasta_df)
+            fasta_df_filtered <- fasta_df |> dplyr::filter(!stringr::str_detect(seq_name, "PIG"))
+
+            rowsOutput <- nrow(fasta_df_filtered)
+            rowsFiltered <- rowsInput - rowsOutput
+            
+            #Set input/filtered row counts to NULL
+            rowsInput <- NULL
+            rowsFiltered <- NULL
+            rowsOutput <- NULL
+            
+            
+            req(input$userFasta_manipulate, input$filterString)
+            
+            #read in the uploaded fasta file and make data frame
+            temp <-  input$userFasta_manipulate$datapath
+            fastaFile <- input$userFasta_manipulate$name
+            fastaName <- stringr::str_remove(fastaFile, ".fasta")
+            
+            #read in the FASTA and convert to data frame
+            fasta <- Biostrings::readAAStringSet(filepath = temp)
+            
+            #coerce into a data frame with the names and AA sequences
+            fasta_df <- data.frame(seq_name = names(fasta),
+                                   sequence = paste(fasta))
+            
+            rowsInput <- nrow(fasta_df)
+            
+            #filter out headers that contain the string provided
+            fasta_df_filtered <- fasta_df %>% dplyr::filter(!stringr::str_detect(seq_name, input$filterString))
+            
+            rowsOutput <- nrow(fasta_df_filtered)
+            rowsFiltered <- rowsInput - rowsOutput
+            
+            
+            #generate output with download buttons
+            fasta_df_filtered_out <- Biostrings::AAStringSet(fasta_df_filtered$sequence)
+            names(fasta_df_filtered_out) <- fasta_df_filtered$seq_name
+            
+            print(fasta_df_filtered_out)
+            print(rowsInput)
+            print(rowsFiltered)
+            print(rowsOutput)
+            
+            #make the download buttons appear if the job is submitted and completed
+            output$downloadManipulationDB <- renderUI({
+                req(input$submitManipulate, exists("fasta_df_filtered_out"))
+                downloadButton(outputId = "downloadManipulatedFasta", label = "Download Manipulated FASTA")
+            })
+            
+            output$downloadManipulationLog<- renderUI({
+                req(input$submitManipulate, exists("fasta_df_filtered_out"))
+                downloadButton(outputId = "downloadManipulatedLog", label = "Download FASTA Manipulation Log")
+            })
+            
+            # Download FASTA file of processed database ----------------------------
+            output$downloadManipulatedFasta <- downloadHandler(
+                filename = function() {
+                    paste0(fastaName, "_", date, "_filtered.fasta")
+                },
+                content = function(file) {
+                    Biostrings::writeXStringSet(x = fasta_df_filtered_out, filepath = file)
+                }
+            )
+            
+            #Download txt file of processing log -----------------------------------
+            output$downloadManipulatedLog<- downloadHandler(
+                filename = function() {
+                    paste0(fastaName, "_", date, "_filtered_processing_log.txt")
+                },
+                content = function(file) {
+                    sink(file)
+                    cat(
+                        paste0( "Total number of proteins in input FASTA: ", rowsInput, ".\n",
+                               "Total number of proteins in filtered output FASTA: ", rowsOutput, ".\n",
+                               "Total number of proteins that contained the filtering string/text: ", rowsFiltered, ".\n",
+                               "String/Text used for filtering: ", input$filterString)
+                    )
+                    sink()
+                }
+            )
+            
+        }
+        
+        if(input$manipulationType == "concatenate") {
+            
+            rowsOriginal <- NULL
+            rowsSecond <- NULL
+            rowsConcatenated <- NULL
+            
+            
+            #read in first fasta and make data frame
+            req(input$userFasta_manipulate, input$fastaToConcat)
+            
+            #read in the uploaded fasta file and make data frame
+            temp <-  input$userFasta_manipulate$datapath
+            fastaFile <- input$userFasta_manipulate$name
+            fastaName <- stringr::str_remove(fastaFile, ".fasta")
+            
+            #read in the FASTA and convert to data frame
+            fasta <- Biostrings::readAAStringSet(filepath = temp)
+            
+            #coerce into a data frame with the names and AA sequences
+            fasta_df <- data.frame(seq_name = names(fasta),
+                                   sequence = paste(fasta))
+            
+            rowsOriginal <- nrow(fasta_df)
+            
+            
+            #read in second fasta and make data frame
+            #read in the uploaded fasta file and make data frame
+            temp_2 <-  input$fastaToConcat$datapath
+            fastaFile_2 <- input$fastaToConcat$name
+            fastaName_2 <- stringr::str_remove(fastaFile, ".fasta")
+            
+            #read in the FASTA and convert to data frame
+            fasta_2 <- Biostrings::readAAStringSet(filepath = temp_2)
+            
+            #coerce into a data frame with the names and AA sequences
+            fasta_df_2 <- data.frame(seq_name = names(fasta_2),
+                                   sequence = paste(fasta_2))
+            
+            rowsSecond <- nrow(fasta_df_2)
+            
+            
+            #combine with bind_rows
+            fasta_concatenated <- dplyr::bind_rows(fasta_df, fasta_df_2)
+            
+            rowsConcatenated <- nrow(fasta_concatenated)
+            
+            
+            #generate output database and log
+            #generate output with download buttons
+            fasta_concatenated_out <- Biostrings::AAStringSet(fasta_concatenated$sequence)
+            names(fasta_concatenated_out) <- fasta_concatenated$seq_name
+            
+            #make the download buttons appear if the job is submitted and completed
+            output$downloadManipulationDB <- renderUI({
+                req(input$submitManipulate, exists("fasta_concatenated_out"))
+                downloadButton(outputId = "downloadConcatDB", label = "Download Manipulated FASTA")
+            })
+            
+            output$downloadManipulationLog<- renderUI({
+                req(input$submitManipulate, exists("fasta_concatenated_out"))
+                downloadButton(outputId = "downloadConcatLog", label = "Download FASTA Manipulation Log")
+            })
+            
+            # Download FASTA file of processed database ----------------------------
+            output$downloadConcatDB <- downloadHandler(
+                filename = function() {
+                    paste0(fastaName, "_", date, "_concatenated.fasta")
+                },
+                content = function(file) {
+                    Biostrings::writeXStringSet(x = fasta_concatenated_out, filepath = file)
+                }
+            )
+            
+            #Download txt file of processing log -----------------------------------
+            output$downloadConcatLog<- downloadHandler(
+                filename = function() {
+                    paste0(fastaName, "_", date, "_concatenated_processing_log.txt")
+                },
+                content = function(file) {
+                    sink(file)
+                    cat(
+                        paste0( "Total number of proteins in first input FASTA: ", rowsOriginal, ".\n",
+                                "Total number of proteins in second input FASTA: ", rowsSecond, ".\n",
+                                "Total number of proteins in concatenated FASTA: ", rowsConcatenated, ".\n",
+                                "First FASTA File Name: ", fastaName, ".\n", 
+                                "Second FASTA File Name: ", fastaName_2, ".")
+                    )
+                    sink()
+                }
+            )
+            
+            
+            
+            
+            
+        }
+        
+        
+        
+    })
+    
 }
 
 
