@@ -800,7 +800,7 @@ server <- function(input, output, session) {
             #read in the uploaded fasta file and make data frame
             temp_2 <-  input$fastaToConcat$datapath
             fastaFile_2 <- input$fastaToConcat$name
-            fastaName_2 <- stringr::str_remove(fastaFile, ".fasta")
+            fastaName_2 <- stringr::str_remove(fastaFile_2, ".fasta")
             
             #read in the FASTA and convert to data frame
             fasta_2 <- Biostrings::readAAStringSet(filepath = temp_2)
