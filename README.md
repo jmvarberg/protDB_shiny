@@ -14,9 +14,10 @@ Lastly, in addition to generating the output FASTA file, a text log file is also
 
 The dashboard can be accessed at https://jmvarberg.shinyapps.io/protDB_generator/.
 
-Databases last updated on Oct 24, 2024.
+Databases last updated on May 26, 2025.
 
 
 ## Updates
 
 * 10/22/24 - Updated UniProt database table and UI to allow option to download either the FASTA file containing only canonical sequences, or FASTA containing both canonical and isoform sequences. Prior to this update, only canonical sequences were downloaded when using UniProt option.
+* 05/25/25 - Pushed update with additional FASTA Manipulation Tab that allows for interactive searching/filtering based on strings, as well as simple concatenation of two user-provided FASTA files.
